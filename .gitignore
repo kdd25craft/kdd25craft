@@ -1,2 +1,4 @@
 data/data.zip
 
+.DS_Store
+data/.DS_Store

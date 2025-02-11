@@ -23,13 +23,12 @@ class TokenSequenceDataset(Dataset):
 
             for idx, ((input_seq_tokens, target_seq_tokens), date_seq) in enumerate(zip(sequences, date_seqs)):
                 if date_seq[0] < min_aux_date:
-                    continue  # 최소 날짜 이후의 시퀀스만 사용
+                    continue 
 
-                # 토큰 임베딩으로 변환
+                
                 input_seq = self.token_embedding_matrix[input_seq_tokens]    # [seq_len, embedding_dim]
                 target_seq = self.token_embedding_matrix[target_seq_tokens]  # [seq_len, embedding_dim]
 
-                # Aux embedding을 가져옵니다.
                 aux_embeds = []
                 for date in date_seq:
                     aux_embed = aux_embedding_dict.get((date, symbol), np.zeros(self.aux_embedding_dim))
@@ -38,7 +37,7 @@ class TokenSequenceDataset(Dataset):
                     aux_embeds.append(aux_embed)
                 aux_embeds = torch.stack(aux_embeds)  # [seq_len, aux_embedding_dim]
 
-                # 데이터 리스트에 추가합니다.
+                
                 self.inputs.append(torch.tensor(input_seq, dtype=torch.float32))    # [seq_len, embedding_dim]
                 self.targets.append(torch.tensor(target_seq, dtype=torch.float32))  # [seq_len, embedding_dim]
                 self.symbols.append(symbol)

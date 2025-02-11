@@ -18,7 +18,7 @@ class AxialAttentionBlock(nn.Module):
     def __init__(self, d_model=32, nhead_time=1, nhead_stock=4,
                  dim_feedforward=128,
                  stock_mode='last',
-                 seq_len=20  # 필요하면 seq_len을 인자로
+                 seq_len=20  
         ):
         super().__init__()
         self.d_model = d_model
@@ -26,7 +26,7 @@ class AxialAttentionBlock(nn.Module):
         self.nhead_stock= nhead_stock
         self.dim_feedforward= dim_feedforward
         self.stock_mode= stock_mode
-        self.seq_len= seq_len  # 시퀀스 길이
+        self.seq_len= seq_len  
 
         # (A) Time-axis (d_model=32 등)
         self.time_attn = nn.TransformerDecoderLayer(

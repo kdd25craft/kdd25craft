@@ -88,51 +88,49 @@ def adjust_prices(price_data: pd.DataFrame, *, verbose=False) -> pd.DataFrame:
     if verbose:
         print(price_data)
 
-    # 'date' 컬럼을 datetime 타입으로 변환
+  
     price_data['date'] = pd.to_datetime(price_data['date'])
 
-    # NaN 또는 0인 'close', 'adjusted_close', 'volume' 제거
     price_data = price_data.dropna(subset=['close', 'adjusted_close', 'volume'])
     price_data = price_data[(price_data['close'] != 0) & (price_data['adjusted_close'] != 0) & (price_data['volume'] != 0)]
 
-    # 비율 계산을 위한 price_ratio
+    
     price_ratio = price_data['adjusted_close'] / price_data['close']
 
-    # open, high, low, volume 조정
+ 
     price_data['adjusted_open'] = price_data['open'] * price_ratio
     price_data['adjusted_high'] = price_data['high'] * price_ratio
     price_data['adjusted_low'] = price_data['low'] * price_ratio
     price_data['adjusted_volume'] = price_data['volume'] * (price_data['close'] / price_data['adjusted_close'])
 
-    # 'symbol'과 'date'로 정렬
+ 
     price_data.sort_values(by=['symbol', 'date'], inplace=True)
 
-    # 각 종목(symbol)별로 그룹화하여 c_1 ~ c_4, v_1 ~ v_4 컬럼 생성 및 date 이동
+ 
     def create_features(group):
-        # 인덱스를 리셋하여 순차적인 인덱스 생성
+       
         group = group.reset_index(drop=True)
 
-        # 현재 시점의 adjusted_close, adjusted_volume 저장
+     
         group['adj_close_t0'] = group['adjusted_close']
         group['adj_volume_t0'] = group['adjusted_volume']
 
-        # 미래 1일~4일의 adjusted_close, adjusted_volume를 생성
+        
         for i in range(1, 5):
             group[f'adj_close_t{i}'] = group['adjusted_close'].shift(-i)
             group[f'adj_volume_t{i}'] = group['adjusted_volume'].shift(-i)
 
-        # c_1 ~ c_4 및 v_1 ~ v_4 계산 (% 변화율)
         for i in range(1, 5):
             group[f'c_{i}'] = group[f'adj_close_t{i}'] / group['adj_close_t0'] - 1
             group[f'v_{i}'] = group[f'adj_volume_t{i}'] / group['adj_volume_t0'] - 1
 
-            # v_i에 클리핑 적용 (최대값 5로 제한)
+            
             group[f'v_{i}'] = group[f'v_{i}'].clip(upper=5)
 
-        # date를 t+4로 이동하여 미래의 정보를 사용하지 않도록 함
+       
         group['date'] = group['date'].shift(-4)
 
-        # 마지막 4일은 미래 데이터가 없으므로 제거
+        
         group = group[:-4]
 
         return group
@@ -140,39 +138,32 @@ def adjust_prices(price_data: pd.DataFrame, *, verbose=False) -> pd.DataFrame:
     price_data = price_data.groupby('symbol', group_keys=False).apply(create_features)
     price_data.reset_index(drop=True, inplace=True)
 
-    # 필요한 컬럼만 선택
+    
     price_data = price_data[['symbol', 'date', 'c_1', 'c_2', 'c_3', 'c_4']]
 
-    # NaN 값이 있는 행 제거 (데이터의 마지막 4일은 미래 값이 없으므로 NaN 발생)
+  
     price_data.dropna(subset=['date', 'c_1', 'c_2', 'c_3', 'c_4'], inplace=True)
 
-    # 이상치 제거 적용
+
     price_data_cleaned = clip_outliers(price_data, z_threshold=4)
 
     return price_data_cleaned
 
 
 def clip_outliers(df, z_threshold=4):
-    numeric_cols = df.select_dtypes(include=[np.number]).columns  # 숫자형 컬럼 선택
+    numeric_cols = df.select_dtypes(include=[np.number]).columns 
     df_clipped = df.copy()
-
-    # 각 컬럼에 대해 Z-스코어 계산 및 클리핑
     for col in numeric_cols:
         col_mean = df[col].mean()
         col_std = df[col].std()
         if col_std == 0:
-            continue  # 표준편차가 0이면 스킵
+            continue 
 
-        # Z-스코어 계산
         z_scores = (df[col] - col_mean) / col_std
-
-        # 상한 및 하한 마스크 생성
         upper_mask = z_scores > z_threshold
         lower_mask = z_scores < -z_threshold
 
-        # 상한 클리핑
         df_clipped.loc[upper_mask, col] = col_mean + z_threshold * col_std
-        # 하한 클리핑
         df_clipped.loc[lower_mask, col] = col_mean - z_threshold * col_std
 
     return df_clipped
@@ -189,16 +180,13 @@ def process_date(date, embedding_df, token_embeddings_cpu, grouped_tokens, group
     """
     aux_embedding_subdict = {}
 
-    # 해당 날짜의 모든 심볼과 임베딩 추출
     date_embeddings = embedding_df[embedding_df['date'] == date]
     symbols_on_date = date_embeddings['symbol'].values
     embeddings_on_date = date_embeddings[['embedding_x', 'embedding_y']].values
 
-    # 심볼별로 임베딩 매핑
     symbol_to_embedding = dict(zip(symbols_on_date, embeddings_on_date))
 
     for symbol in symbols_on_date:
-        # 해당 심볼의 토큰 임베딩 가져오기
         if symbol not in grouped_tokens or date not in grouped_dates[symbol]:
             continue
 
@@ -207,44 +195,40 @@ def process_date(date, embedding_df, token_embeddings_cpu, grouped_tokens, group
             token_id = grouped_tokens[symbol][token_index]
             token_embedding = token_embeddings_cpu[token_id]
         except ValueError:
-            continue  # 날짜가 없을 경우 스킵
+            continue  
 
-        # 해당 심볼의 임베딩 가져오기
         symbol_embedding = symbol_to_embedding[symbol]
 
-        # 다른 심볼들과의 거리 및 유사도 계산
         similarities = []
         for other_symbol in symbols_on_date:
             if other_symbol == symbol:
                 continue
             other_embedding = symbol_to_embedding[other_symbol]
-            # 유클리드 거리 계산
+            
             distance = np.linalg.norm(symbol_embedding - other_embedding)
             similarity = np.exp(-distance)
             similarities.append((similarity, other_symbol))
 
-        # 유사도 정규화 및 가중치 계산
+        
         total_similarity = sum([sim[0] for sim in similarities])
         if total_similarity > 0:
             normalized_weights = [(sim[0] / total_similarity, sim[1]) for sim in similarities]
         else:
             normalized_weights = [(0, sim[1]) for sim in similarities]
 
-        # 가중 합산 초기화
+        
         aux_embedding = np.zeros_like(token_embedding)
 
-        # 가중 합산 계산
         for weight, other_symbol in normalized_weights:
-            # 다른 심볼의 토큰 임베딩 가져오기
             try:
                 other_token_index = grouped_dates[other_symbol].index(date)
                 other_token_id = grouped_tokens[other_symbol][other_token_index]
                 other_token_embedding = token_embeddings_cpu[other_token_id]
                 aux_embedding += weight * other_token_embedding
             except ValueError:
-                continue  # 날짜가 없을 경우 스킵
+                continue  
 
-        # 결과 저장
+        
         aux_embedding_subdict[(date, symbol)] = aux_embedding
 
     return aux_embedding_subdict
@@ -681,7 +665,7 @@ def preprocess_data(
     grouped_test_tokens, grouped_test_dates = group_tokens_by_symbol(list(zip(test_df['symbol'], test_df['date'])),
                                                                      test_tokens)
 
-    # 각 데이터셋에 대해 aux_embedding_dict 생성
+    # Create aux_embedding_dict
     train_aux_embedding_dict = calculate_aux_embeddings_optimized(embedding_data, token_embeddings, grouped_train_tokens,
                                                                   grouped_train_dates)
     valid_aux_embedding_dict = calculate_aux_embeddings_optimized(embedding_data, token_embeddings, grouped_valid_tokens,
